@@ -6,9 +6,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Ruta de prueba
 app.get('/', (req, res) => {
-  res.json({ message: 'API Scentia Hunter funcionando correctamente' });
+  res.json({ message: 'API Scentia Hunter desplegada en Vercel' });
 });
 
 module.exports = app;

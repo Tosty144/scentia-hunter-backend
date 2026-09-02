@@ -1,4 +1,4 @@
-require('dotenv').config({ path: './atlas-credentials.env' });
+require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? undefined : './atlas-credentials.env' });
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 
@@ -6,7 +6,8 @@ const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`🚀 Scentia Hunter API corriendo en http://localhost:${PORT}`);
-    console.log(`📄 Documentación Swagger en http://localhost:${PORT}/api-docs`);
+    console.log(`🚀 Servidor listo en puerto ${PORT}`);
   });
 });
+
+module.exports = app;
