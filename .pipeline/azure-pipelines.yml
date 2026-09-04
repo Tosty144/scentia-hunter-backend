@@ -23,7 +23,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  azureSubscription: 'TU-SERVICE-CONNECTION'
+  azureSubscription: 'scentia-azure-conn'
   webAppName: 'TU-APP-SERVICE-BACKEND'
   nodeVersion: '20.x'
 
@@ -77,8 +77,8 @@ stages:
         strategy:
           runOnce:
             deploy:
-              steps:  
-                - task: AzureWebApp@1
+              steps:
+                - task: AzureWebApp@1 
                   displayName: 'Deploy Azure Web App'
                   inputs:
                     azureSubscription: $(azureSubscription)
