@@ -1,0 +1,89 @@
+# .pipeline/azure-pipelines.yml — Backend (Node.js/Express) — repo "scentia-back"
+# Org: jvaronm | Proyecto: Jhosep_scentia
+# Guarda este archivo como .pipeline/azure-pipelines.yml en el repo scentia-back
+# (ya tienes la carpeta .pipeline creada, solo falta este archivo dentro).
+#
+# Antes de correrlo:
+#   1. Crea el Azure App Service (Web App) con runtime Node.js.
+#   2. En Azure DevOps > Project Settings > Service connections, crea una
+#      "Azure Resource Manager" service connection y reemplaza
+#      'TU-SERVICE-CONNECTION' abajo con su nombre exacto.
+#   3. Reemplaza 'TU-APP-SERVICE-BACKEND' con el nombre real de tu Web App.
+#   4. En Azure DevOps > Pipelines > New Pipeline, apunta al repo "scentia-back"
+#      y selecciona "Existing Azure Pipelines YAML file" -> /.pipeline/azure-pipelines.yml
+#   5. Nota: el vercel.json que tienes en este repo no se usa aquí — este
+#      pipeline despliega directo a Azure App Service, no a Vercel.
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  azureSubscription: 'TU-SERVICE-CONNECTION'
+  webAppName: 'TU-APP-SERVICE-BACKEND'
+  nodeVersion: '20.x'
+
+stages:
+  - stage: Build
+    displayName: 'Build backend'
+    jobs:
+      - job: Build
+        displayName: 'Instalar dependencias y compilar'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Instalar Node.js $(nodeVersion)'
+
+          - script: |
+              npm ci
+            displayName: 'npm ci'
+
+          - script: |
+              npm run build --if-present
+            displayName: 'npm run build (si existe)'
+
+          # Excluye node_modules de dev y deja solo lo necesario para producción
+          - script: |
+              npm prune --production
+            displayName: 'Prune dependencias de desarrollo'
+
+          - task: ArchiveFiles@2
+            displayName: 'Empaquetar en zip'
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+              includeRootFolder: false
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/backend-$(Build.BuildId).zip'
+              replaceExistingArchive: true
+
+          - publish: '$(Build.ArtifactStagingDirectory)/backend-$(Build.BuildId).zip'
+            artifact: backend-drop
+
+  - stage: Deploy
+    displayName: 'Deploy backend a Azure App Service'
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - deployment: Deploy
+        displayName: 'Deploy a $(webAppName)'
+        environment: 'scentia-hunter-backend'
+        pool:
+          vmImage: 'ubuntu-latest'
+        strategy:
+          runOnce:
+            deploy:
+              steps:  
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Azure Web App'
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    appType: 'webAppLinux'
+                    appName: $(webAppName)
+                    package: '$(Pipeline.Workspace)/backend-drop/backend-$(Build.BuildId).zip'
+                    runtimeStack: 'NODE|20-lts'
+                    startUpCommand: 'npm start'
