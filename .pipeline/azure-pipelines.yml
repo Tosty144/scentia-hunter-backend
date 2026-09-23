@@ -18,8 +18,8 @@ pool:
 
 variables:
   azureSubscription: 'scentia-azure-conn'
-  webAppName: 'TU-APP-SERVICE-BACKEND'
-  nodeVersion: '20.x'
+  webAppName: 'scentia-hunter-back-jvaronm'
+  nodeVersion: '22.x'
 
 stages:
   - stage: Build
@@ -79,5 +79,5 @@ stages:
                     appType: 'webAppLinux'
                     appName: $(webAppName)
                     package: '$(Pipeline.Workspace)/backend-drop/backend-$(Build.BuildId).zip'
-                    runtimeStack: 'NODE|20-lts'
+                    runtimeStack: 'NODE|22-lts'
                     startUpCommand: 'npm start'
