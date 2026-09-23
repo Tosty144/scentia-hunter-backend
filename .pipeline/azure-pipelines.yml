@@ -1,17 +1,11 @@
 # .pipeline/azure-pipelines.yml — Backend (Node.js/Express) — repo "scentia-back"
 # Org: jvaronm | Proyecto: Jhosep_scentia
-# Guarda este archivo como .pipeline/azure-pipelines.yml en el repo scentia-back
-# (ya tienes la carpeta .pipeline creada, solo falta este archivo dentro).
+# Corre en agente self-hosted Windows (pool "mi-pc-agent").
 #
 # Antes de correrlo:
 #   1. Crea el Azure App Service (Web App) con runtime Node.js.
-#   2. En Azure DevOps > Project Settings > Service connections, crea una
-#      "Azure Resource Manager" service connection y reemplaza
-#      'TU-SERVICE-CONNECTION' abajo con su nombre exacto.
-#   3. Reemplaza 'TU-APP-SERVICE-BACKEND' con el nombre real de tu Web App.
-#   4. En Azure DevOps > Pipelines > New Pipeline, apunta al repo "scentia-back"
-#      y selecciona "Existing Azure Pipelines YAML file" -> /.pipeline/azure-pipelines.yml
-#   5. Nota: el vercel.json que tienes en este repo no se usa aquí — este
+#   2. Reemplaza 'TU-APP-SERVICE-BACKEND' con el nombre real de tu Web App.
+#   3. Nota: el vercel.json que tienes en este repo no se usa aquí — este
 #      pipeline despliega directo a Azure App Service, no a Vercel.
 
 trigger:
@@ -20,7 +14,7 @@ trigger:
       - main
 
 pool:
-  vmImage: 'mi-pc-agent'
+  name: 'mi-pc-agent'
 
 variables:
   azureSubscription: 'scentia-azure-conn'
@@ -73,12 +67,12 @@ stages:
         displayName: 'Deploy a $(webAppName)'
         environment: 'scentia-hunter-backend'
         pool:
-          vmImage: 'mi-pc-agent'
+          name: 'mi-pc-agent'
         strategy:
           runOnce:
             deploy:
               steps:
-                - task: AzureWebApp@1 
+                - task: AzureWebApp@1
                   displayName: 'Deploy Azure Web App'
                   inputs:
                     azureSubscription: $(azureSubscription)
