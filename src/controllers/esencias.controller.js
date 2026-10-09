@@ -76,16 +76,11 @@ exports.actualizarVariante = async (req, res) => {
   }
 };
 
-exports.probadores = async (req, res) => {
-  try {
-    const { estado } = req.query;
-    let query = { "variantes.esProbador": true };
-    if (estado) {
-      query.estado = estado;
-    }
-    const esencias = await Esencia.find(query);
-    res.json(esencias);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al obtener probadores' });
-  }
-};
+   exports.probadores = async (req, res) => {
+     try {
+       const esencias = await Esencia.find({ probador: true });
+       res.json(esencias);
+     } catch (error) {
+       res.status(500).json({ error: 'Error al obtener probadores' });
+     }
+   };

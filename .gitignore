@@ -3,3 +3,4 @@ node_modules/
 atlas-credentials.env
 *.log
 .vercel
+.env*
