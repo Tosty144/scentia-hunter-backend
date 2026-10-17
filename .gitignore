@@ -4,3 +4,5 @@ atlas-credentials.env
 *.log
 .vercel
 .env*
+out/
+coverage/

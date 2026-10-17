@@ -9,8 +9,27 @@
     "dev": "nodemon server.js",
     "seed": "node scripts/seed.js",
     "test": "jest --passWithNoTests",
+    "test:coverage": "jest --coverage --json --outputFile=out/test-results.json",
     "prepare": "husky || true"
   },
+  
+  "jest": {
+  "testEnvironment": "node",
+  "collectCoverageFrom": [
+    "**/*.js",
+    "!**/node_modules/**",
+    "!out/**",
+    "!tests/**",
+    "!scripts/**",
+    "!server.js"
+  ],
+  "coverageDirectory": "out/coverage",
+  "coverageReporters": ["text", "html", "cobertura"],
+  "reporters": [
+    "default",
+    ["jest-junit", { "outputDirectory": "out", "outputName": "junit.xml" }]
+  ]
+},
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -22,6 +41,7 @@
   "devDependencies": {
     "husky": "^9.1.7",
     "jest": "^30.5.2",
+    "jest-junit": "^17.0.0",
     "nodemon": "^3.1.4",
     "supertest": "^7.3.1"
   }
