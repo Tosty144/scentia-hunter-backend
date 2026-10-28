@@ -7,6 +7,7 @@
 #   2. Reemplaza 'TU-APP-SERVICE-BACKEND' con el nombre real de tu Web App.
 #   3. Nota: el vercel.json que tienes en este repo no se usa aquí — este
 #      pipeline despliega directo a Azure App Service, no a Vercel.
+#   4. Crea la variable secreta SONAR_TOKEN en el pipeline (Edit > Variables).
 
 trigger:
   branches:
@@ -28,7 +29,7 @@ stages:
     displayName: 'Build backend'
     jobs:
       - job: Build
-        displayName: 'Instalar dependencias, probar y compilar'
+        displayName: 'Instalar dependencias, probar, analizar y compilar'
         steps:
           - task: NodeTool@0
             inputs:
@@ -40,8 +41,12 @@ stages:
             displayName: 'npm ci'
 
           - script: |
-              npm test
-            displayName: 'Pruebas unitarias'
+              npm run test:coverage
+            displayName: 'Pruebas con cobertura'
+
+          - script: |
+              npx --yes @sonar/scan -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=$(SONAR_TOKEN)
+            displayName: 'SonarCloud: analizar'
 
           - script: |
               npm run build --if-present

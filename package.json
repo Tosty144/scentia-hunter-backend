@@ -12,24 +12,23 @@
     "test:coverage": "jest --coverage --json --outputFile=out/test-results.json",
     "prepare": "husky || true"
   },
-  
   "jest": {
-  "testEnvironment": "node",
-  "collectCoverageFrom": [
-    "**/*.js",
-    "!**/node_modules/**",
-    "!out/**",
-    "!tests/**",
-    "!scripts/**",
-    "!server.js"
-  ],
-  "coverageDirectory": "out/coverage",
-  "coverageReporters": ["text", "html", "cobertura"],
-  "reporters": [
-    "default",
-    ["jest-junit", { "outputDirectory": "out", "outputName": "junit.xml" }]
-  ]
-},
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "**/*.js",
+      "!**/node_modules/**",
+      "!out/**",
+      "!tests/**",
+      "!scripts/**",
+      "!server.js"
+    ],
+    "coverageDirectory": "out/coverage",
+    "coverageReporters": ["text", "html", "cobertura", "lcov"],
+    "reporters": [
+      "default",
+      ["jest-junit", { "outputDirectory": "out", "outputName": "junit.xml" }]
+    ]
+  },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
