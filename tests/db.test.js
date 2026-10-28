@@ -24,7 +24,10 @@ describe('connectDB', () => {
   it('conecta usando la variable MONGODB_URI', async () => {
     mongoose.connect.mockResolvedValue();
     await connectDB();
-    expect(mongoose.connect).toHaveBeenCalledWith(process.env.MONGODB_URI);
+    expect(mongoose.connect).toHaveBeenCalledWith(
+      process.env.MONGODB_URI,
+      expect.any(Object)
+    );
   });
 
   it('no lanza error si la conexión falla, solo lo registra', async () => {
@@ -33,10 +36,9 @@ describe('connectDB', () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  it('intenta conectar aunque MONGODB_URI no esté definida', async () => {
+  it('no intenta conectar si MONGODB_URI no está definida', async () => {
     delete process.env.MONGODB_URI;
-    mongoose.connect.mockResolvedValue();
     await connectDB();
-    expect(mongoose.connect).toHaveBeenCalledWith(undefined);
+    expect(mongoose.connect).not.toHaveBeenCalled();
   });
 });
