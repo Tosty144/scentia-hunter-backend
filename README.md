@@ -1,127 +1,111 @@
 # Scentia Hunter — API Backend
 
-API REST para el Sistema de Gestión y Análisis de Inventario de Scentia Hunter.
-Node.js + Express + MongoDB (Mongoose), documentada con OpenAPI/Swagger.
+API REST que guarda y calcula el inventario, las ventas, las ganancias y las estadísticas de un emprendimiento de perfumería.
 
-Este backend vive en un **repositorio/carpeta separada** del frontend (React + Vite).
-Se comunican únicamente por HTTP a través de la API REST.
+![Frontend de Scentia Hunter consumiendo esta API](docs/captura-dashboard.png)
 
-## 1. Instalación local
+- API en vivo (Azure App Service): https://scentia-hunter-back-jvaronm-e5hxf4gmgxc4a3e4.centralus-01.azurewebsites.net
+- API en vivo (Vercel): https://scentia-hunter-backend-bgw1.vercel.app
+- Frontend que la consume: https://github.com/Tosty144/scentia-hunter-frontend
 
-```bash
-npm install
-cp .env.example .env
-```
+La ruta `/` responde `{"message":"API Scentia Hunter lista y desplegada"}`; los datos están bajo `/api`.
 
-Edita `.env` y coloca tu cadena de conexión real de MongoDB Atlas en `MONGODB_URI`.
+## Modelo de datos
 
-```bash
-npm run seed   # inserta datos de prueba (mismas esencias del mock del frontend)
-npm run dev    # levanta el servidor con recarga automática (nodemon)
-```
-
-- API: http://localhost:4000
-- Documentación Swagger: **http://localhost:4000/api-docs**
-- JSON de OpenAPI: http://localhost:4000/api-docs.json
-
-## 2. Base de datos — MongoDB Atlas
-
-1. Crea una cuenta gratuita en https://www.mongodb.com/cloud/atlas
-2. Crea un cluster gratuito (M0)
-3. En "Database Access" crea un usuario y contraseña
-4. En "Network Access" agrega `0.0.0.0/0` (permite conexión desde Azure y tu PC) — para producción real conviene restringir esto a las IPs salientes de tu App Service
-5. En "Database" → "Connect" → "Drivers" copia la cadena de conexión y pégala en `MONGODB_URI`
-
-## 3. Despliegue en Azure (App Service)
-
-Recursos de Azure que necesitas:
-
-| Recurso | Para qué sirve |
-|---|---|
-| **Azure App Service** (Linux, Node 20 LTS) | Hospeda esta API Express |
-| **Application Insights** (opcional) | Monitoreo y logs |
-| MongoDB Atlas (fuera de Azure) | Base de datos — no necesitas Cosmos DB |
-
-Si tienes correo institucional, activa **Azure for Students** (https://azure.microsoft.com/free/students) para obtener $100 USD de crédito sin tarjeta de crédito.
-
-### Pasos (Azure Portal)
-
-1. Crea un **App Service**: Runtime stack `Node 20 LTS`, sistema operativo `Linux`, plan `Free F1` o `Basic B1`
-2. En **Configuración → Variables de entorno**, agrega:
-   - `MONGODB_URI` = tu cadena de Atlas
-   - `FRONTEND_URL` = la URL de tu app en Vercel (ej. `https://scentia-hunter.vercel.app`)
-   - `UMBRAL_BAJO_STOCK` = `3`
-3. En **Configuración general**, define el "Startup Command": `node server.js`
-4. Despliega el código con cualquiera de estas opciones:
-   - **GitHub Actions** (recomendado): conecta tu repo del backend desde "Centro de implementación" y Azure genera el workflow automáticamente
-   - **Azure CLI**:
-     ```bash
-     az webapp up --name scentia-hunter-api --resource-group scentia-hunter-rg --runtime "NODE:20-lts"
-     ```
-5. Verifica: `https://scentia-hunter-api.azurewebsites.net/api-docs` debe mostrar el Swagger
-
-### Pasos (Azure CLI, alternativa rápida)
-
-```bash
-az login
-az group create --name scentia-hunter-rg --location eastus
-az appservice plan create --name scentia-hunter-plan --resource-group scentia-hunter-rg --sku F1 --is-linux
-az webapp create --name scentia-hunter-api --resource-group scentia-hunter-rg --plan scentia-hunter-plan --runtime "NODE:20-lts"
-az webapp config appsettings set --name scentia-hunter-api --resource-group scentia-hunter-rg --settings MONGODB_URI="<tu-cadena>" FRONTEND_URL="<tu-url-vercel>" UMBRAL_BAJO_STOCK="3"
-az webapp deployment source config-local-git --name scentia-hunter-api --resource-group scentia-hunter-rg
-git remote add azure <url-que-te-devuelve-el-comando-anterior>
-git push azure main
-```
-
-## 4. Conexión con el frontend (Vercel)
-
-En el proyecto de **frontend**, agrega una variable de entorno:
+Cada esencia tiene variantes independientes, por ejemplo:
 
 ```
-VITE_API_URL=https://scentia-hunter-api.azurewebsites.net
+Dior Sauvage
+ ├── Genérico · 30 ml   (costo, precio, stock)
+ ├── Genérico · 100 ml
+ ├── Triple A · 100 ml
+ └── Original · 100 ml
 ```
 
-En local, en el `.env` del frontend:
+Las ventas descuentan stock de la variante vendida y guardan ingreso y ganancia (ingreso menos costo).
 
-```
-VITE_API_URL=http://localhost:4000
-```
+## Endpoints
 
-En Vercel: **Project → Settings → Environment Variables** → agrega `VITE_API_URL` con la URL de Azure, para los entornos Production y Preview.
-
-## 5. Estructura de carpetas
-
-```
-scentia-hunter-backend/
-├── server.js                  # punto de entrada
-├── src/
-│   ├── app.js                  # Express, CORS, Swagger, montaje de rutas
-│   ├── config/db.js            # conexión a MongoDB
-│   ├── models/                 # Esencia (con variantes embebidas), Venta, Movimiento
-│   ├── controllers/            # lógica de negocio por módulo
-│   ├── routes/                 # endpoints + anotaciones @openapi
-│   ├── docs/swagger.js         # configuración de swagger-jsdoc
-│   └── middlewares/errorHandler.js
-└── scripts/seed.js             # datos de prueba
-```
-
-## 6. Endpoints principales
-
-| Método | Ruta | HU |
+| Método | Ruta | Descripción |
 |---|---|---|
-| GET/POST | `/api/esencias` | HU01, HU02 |
-| GET/PUT/DELETE | `/api/esencias/:id` | HU02, HU05 |
-| POST | `/api/esencias/:id/variantes` | HU03 |
-| PUT | `/api/esencias/:id/variantes/:varianteId` | HU04, HU05 |
-| GET | `/api/esencias/probadores?estado=disponibles\|faltantes` | HU13-HU15 |
-| POST | `/api/inventario/entradas` | HU06 |
-| POST | `/api/inventario/salidas` | HU07 |
-| GET | `/api/inventario/bajo-stock` | HU08 |
-| GET | `/api/inventario/inversion` | HU09 |
-| GET/POST | `/api/ventas` | HU10-HU12 |
-| GET | `/api/dashboard` | HU19 |
-| GET | `/api/analisis/ranking` | HU16 |
-| GET | `/api/analisis/sin-movimiento` | HU17 |
-| GET | `/api/analisis/rentabilidad` | HU18 |
+| GET, POST | `/api/esencias` | Listar y crear esencias |
+| GET, PUT, DELETE | `/api/esencias/:id` | Consultar, editar y eliminar una esencia |
+| POST | `/api/esencias/:id/variantes` | Agregar una variante |
+| PUT | `/api/esencias/:id/variantes/:varianteId` | Editar una variante |
+| GET | `/api/esencias/probadores?estado=disponibles\|faltantes` | Esencias con o sin probador |
+| POST | `/api/inventario/entradas` | Registrar entrada de stock |
+| POST | `/api/inventario/salidas` | Registrar salida de stock |
+| GET | `/api/inventario/movimientos` | Historial de movimientos |
+| GET | `/api/inventario/bajo-stock` | Variantes bajo el umbral de stock |
+| GET | `/api/inventario/inversion` | Inversión total en inventario |
+| GET, POST | `/api/ventas` | Listar (filtro `desde`/`hasta`) y registrar ventas |
+| GET | `/api/dashboard` | Indicadores generales |
+| GET | `/api/analisis/ranking` | Productos más y menos vendidos |
+| GET | `/api/analisis/sin-movimiento` | Esencias sin ventas en el periodo |
+| GET | `/api/analisis/rentabilidad` | Ganancia por variante |
 
-Todos documentados en detalle (con ejemplos de request/response) en `/api-docs`.
+## Cómo ejecutarlo
+
+Requisitos: Node.js 20 o superior y una base de datos MongoDB (por ejemplo, un clúster gratuito de MongoDB Atlas).
+
+```bash
+git clone https://github.com/Tosty144/scentia-hunter-backend.git
+cd scentia-hunter-backend
+npm install
+cp .env.example atlas-credentials.env   # en Windows: copy .env.example atlas-credentials.env
+# edita MONGODB_URI con tu cadena de conexión
+npm run dev                             # API en http://localhost:4000 (o el PORT que definas)
+```
+
+| Comando | Para qué sirve |
+|---|---|
+| `npm start` | Inicia la API con Node |
+| `npm run dev` | Inicia con recarga automática (nodemon) |
+| `npm test` | Pruebas unitarias con Jest y Supertest |
+| `npm run test:coverage` | Pruebas con cobertura en `out/coverage` |
+
+Variables de entorno: `MONGODB_URI` (obligatoria), `PORT` y `UMBRAL_BAJO_STOCK`. Los archivos con credenciales (`atlas-credentials.env`, `.env*`) están en `.gitignore` y no se suben al repositorio. En Azure y Vercel se configuran como variables de entorno del servicio.
+
+## Tecnologías
+
+- Node.js, Express 4 y CORS
+- MongoDB Atlas con Mongoose 8
+- Jest, Supertest y Husky
+- Despliegue en Azure App Service con Azure Pipelines (build, pruebas, SonarCloud y OWASP ZAP) y en Vercel
+- Desarrollo en WSL (Ubuntu) con OpenCode como asistente de programación
+
+## Estructura
+
+```
+server.js              # punto de entrada (app.listen fuera de Vercel)
+src/
+├── app.js             # Express, CORS y montaje de rutas
+├── config/db.js       # conexión a MongoDB
+├── models/            # Esencia (con variantes), Inventario, Venta
+├── controllers/       # lógica de negocio por módulo
+└── routes/            # endpoints
+tests/                 # pruebas unitarias
+.pipeline/             # pipeline de Azure DevOps
+```
+
+## Autor
+
+Jhosep Varón
+
+## Referencias
+
+MongoDB. (s.f.). *Mongoose ODM*. https://mongoosejs.com
+
+MongoDB. (s.f.). *MongoDB Atlas documentation*. https://www.mongodb.com/docs/atlas/
+
+Microsoft. (s.f.). *Azure App Service documentation*. Microsoft Learn. https://learn.microsoft.com/en-us/azure/app-service/
+
+Microsoft. (s.f.). *How to install Linux on Windows with WSL*. Microsoft Learn. https://learn.microsoft.com/en-us/windows/wsl/install
+
+OpenCode. (s.f.). *OpenCode: The open source AI coding agent*. https://opencode.ai
+
+OpenJS Foundation. (s.f.). *Express*. https://expressjs.com
+
+OpenJS Foundation. (s.f.). *Jest*. https://jestjs.io
+
+Vercel. (s.f.). *Vercel documentation*. https://vercel.com/docs
