@@ -1,13 +1,6 @@
 # .pipeline/azure-pipelines.yml — Backend (Node.js/Express) — repo "scentia-back"
-# Org: jvaronm | Proyecto: Jhosep_scentia
-# Corre en agente self-hosted Windows (pool "mi-pc-agent").
-#
-# Antes de correrlo:
-#   1. Crea el Azure App Service (Web App) con runtime Node.js.
-#   2. Reemplaza 'TU-APP-SERVICE-BACKEND' con el nombre real de tu Web App.
-#   3. Nota: el vercel.json que tienes en este repo no se usa aquí — este
-#      pipeline despliega directo a Azure App Service, no a Vercel.
-#   4. Crea la variable secreta SONAR_TOKEN en el pipeline (Edit > Variables).
+# Etapas: Build -> Package -> Deploy DEV -> Seguridad (ZAP) -> Deploy QA -> Deploy PROD
+# Requiere: variable secreta SONAR_TOKEN y Docker Desktop en el agente.
 
 trigger:
   branches:
@@ -20,16 +13,22 @@ pool:
 
 variables:
   azureSubscription: 'scentia-azure-conn'
-  webAppName: 'scentia-hunter-back-jvaronm'
   nodeVersion: '22.x'
   HUSKY: 0
+  # Web Apps por ambiente (al inicio las tres son la misma app)
+  webAppDev: 'scentia-hunter-back-jvaronm'
+  webAppQa: 'scentia-hunter-back-jvaronm'
+  webAppProd: 'scentia-hunter-back-jvaronm'
+  # URL pública del ambiente DEV (la que escanea ZAP)
+  devUrl: 'https://scentia-hunter-back-jvaronm-e5hxf4gmgxc4a3e4.centralus-01.azurewebsites.net'
 
 stages:
+  # ───────────── 1. COMPILE / BUILD ─────────────
   - stage: Build
-    displayName: 'Build backend'
+    displayName: '1. Compile / Build'
     jobs:
       - job: Build
-        displayName: 'Instalar dependencias, probar, analizar y compilar'
+        displayName: 'Instalar, probar con coverage y analizar'
         steps:
           - task: NodeTool@0
             inputs:
@@ -44,18 +43,43 @@ stages:
               npm run test:coverage
             displayName: 'Pruebas con cobertura'
 
+          - task: PublishTestResults@2
+            displayName: 'Publicar resultados de pruebas'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'out/junit.xml'
+              searchFolder: '$(System.DefaultWorkingDirectory)'
+
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publicar code coverage'
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: '$(System.DefaultWorkingDirectory)/out/coverage/cobertura-coverage.xml'
+
           - script: |
               npx --yes @sonar/scan -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=$(SONAR_TOKEN)
             displayName: 'SonarCloud: analizar'
 
-          - script: |
-              npm run build --if-present
-            displayName: 'npm run build (si existe)'
+  # ───────────── 2. PACKAGE ─────────────
+  - stage: Package
+    displayName: '2. Package'
+    dependsOn: Build
+    jobs:
+      - job: Package
+        displayName: 'Empaquetar backend'
+        steps:
+          - checkout: self
+            clean: true
 
-          # Excluye node_modules de dev y deja solo lo necesario para producción
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Instalar Node.js $(nodeVersion)'
+
           - script: |
-              npm prune --production
-            displayName: 'Prune dependencias de desarrollo'
+              npm ci --omit=dev --ignore-scripts
+            displayName: 'Instalar solo dependencias de producción'
 
           - task: ArchiveFiles@2
             displayName: 'Empaquetar en zip'
@@ -69,26 +93,108 @@ stages:
           - publish: '$(Build.ArtifactStagingDirectory)/backend-$(Build.BuildId).zip'
             artifact: backend-drop
 
-  - stage: Deploy
-    displayName: 'Deploy backend a Azure App Service'
-    dependsOn: Build
+  # ───────────── 3. DEPLOY DEV ─────────────
+  - stage: DeployDEV
+    displayName: '3. Deploy - DEV'
+    dependsOn: Package
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
     jobs:
       - deployment: Deploy
-        displayName: 'Deploy a $(webAppName)'
-        environment: 'scentia-hunter-backend'
-        pool:
-          name: 'mi-pc-agent'
+        displayName: 'Deploy a $(webAppDev)'
+        environment: 'scentia-back-dev'
         strategy:
           runOnce:
             deploy:
               steps:
                 - task: AzureWebApp@1
-                  displayName: 'Deploy Azure Web App'
+                  displayName: 'Deploy Azure Web App (DEV)'
                   inputs:
                     azureSubscription: $(azureSubscription)
                     appType: 'webAppLinux'
-                    appName: $(webAppName)
+                    appName: $(webAppDev)
+                    package: '$(Pipeline.Workspace)/backend-drop/backend-$(Build.BuildId).zip'
+                    runtimeStack: 'NODE|22-lts'
+                    startUpCommand: 'npm start'
+
+  # ───────────── 4. SEGURIDAD (ZAP) ─────────────
+  - stage: Security
+    displayName: '4. Seguridad (ZAP) - DEV'
+    dependsOn: DeployDEV
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: ZAP
+        displayName: 'OWASP ZAP baseline scan'
+        steps:
+          - checkout: none
+
+          - powershell: |
+              $url = '$(devUrl)'
+              for ($i = 1; $i -le 6; $i++) {
+                try {
+                  $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 60
+                  Write-Host ('OK ' + $r.StatusCode)
+                  break
+                } catch {
+                  Write-Host ('Intento ' + $i + ' fallido, reintentando...')
+                  Start-Sleep -Seconds 10
+                }
+              }
+            displayName: 'Despertar la app (warm-up)'
+
+          - script: |
+              if not exist "$(Build.ArtifactStagingDirectory)\zap" mkdir "$(Build.ArtifactStagingDirectory)\zap"
+              docker run --rm -v "$(Build.ArtifactStagingDirectory)\zap:/zap/wrk/:rw" ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t $(devUrl) -r zap-report.html -I
+            displayName: 'ZAP: baseline scan'
+
+          - publish: '$(Build.ArtifactStagingDirectory)/zap'
+            artifact: zap-report
+            displayName: 'Publicar reporte ZAP'
+            condition: succeededOrFailed()
+
+  # ───────────── 5. DEPLOY QA ─────────────
+  - stage: DeployQA
+    displayName: '3. Deploy - QA'
+    dependsOn: DeployDEV
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Deploy
+        displayName: 'Deploy a $(webAppQa)'
+        environment: 'scentia-back-qa'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Azure Web App (QA)'
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    appType: 'webAppLinux'
+                    appName: $(webAppQa)
+                    package: '$(Pipeline.Workspace)/backend-drop/backend-$(Build.BuildId).zip'
+                    runtimeStack: 'NODE|22-lts'
+                    startUpCommand: 'npm start'
+
+  # ───────────── 6. DEPLOY PROD ─────────────
+  - stage: DeployPROD
+    displayName: '3. Deploy - PROD'
+    dependsOn:
+      - DeployQA
+      - Security
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Deploy
+        displayName: 'Deploy a $(webAppProd)'
+        environment: 'scentia-back-prod'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebApp@1
+                  displayName: 'Deploy Azure Web App (PROD)'
+                  inputs:
+                    azureSubscription: $(azureSubscription)
+                    appType: 'webAppLinux'
+                    appName: $(webAppProd)
                     package: '$(Pipeline.Workspace)/backend-drop/backend-$(Build.BuildId).zip'
                     runtimeStack: 'NODE|22-lts'
                     startUpCommand: 'npm start'
